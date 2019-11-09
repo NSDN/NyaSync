@@ -1,0 +1,17 @@
+﻿<Window x:Class="NyaSync.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:NyaSync"
+        mc:Ignorable="d"
+        Title="NyaSync" Height="240" Width="480" Background="{x:Null}" ResizeMode="NoResize" WindowStartupLocation="CenterScreen" WindowStyle="None" AllowsTransparency="True" Loaded="Window_Loaded">
+    <Grid MouseMove="Grid_MouseMove">
+        <Image x:Name="LogoBox" Margin="0,0,0,0" />
+        <Grid x:Name="TextLogo" MouseMove="TextLogo_MouseMove">
+            <Rectangle Fill="#FF607D8B" Margin="0,0,0,0" RadiusX="32" RadiusY="32"/>
+            <Label Content="NyaSync" Margin="0,0,0,0" VerticalContentAlignment="Center" HorizontalContentAlignment="Center" FontSize="72" Foreground="#FFEEEEEE" />
+        </Grid>
+        <Button x:Name="BtnExit" Content="×" Margin="0,16,16,0" HorizontalAlignment="Right" Width="24" Height="24" VerticalAlignment="Top" Background="{x:Null}" Foreground="#FFE1E1E1" FontSize="16" VerticalContentAlignment="Center" Click="BtnExit_Click" BorderBrush="{x:Null}" FontWeight="Bold" />
+    </Grid>
+</Window>
