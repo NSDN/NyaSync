@@ -31,7 +31,7 @@ namespace NyaSyncCLI
                     string url = args[0];
                     string target = args[1];
                     string cache = args[2];
-                    NyaSyncCore.DoClientStuff(url, target, cache);
+                    NyaSyncCore.DoClientStuff(url, target, cache, 512, 3);
                 }
             }
         }

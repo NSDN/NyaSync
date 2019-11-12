@@ -5,13 +5,13 @@ using System.Runtime.InteropServices;
 // 有关程序集的一般信息由以下
 // 控制。更改这些特性值可修改
 // 与程序集关联的信息。
-[assembly: AssemblyTitle("NyaSyncCLI")]
-[assembly: AssemblyDescription("")]
+[assembly: AssemblyTitle("NyaSync CLI")]
+[assembly: AssemblyDescription("NyaSync Console Interface")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("")]
-[assembly: AssemblyProduct("NyaSyncCLI")]
-[assembly: AssemblyCopyright("Copyright ©  2019")]
-[assembly: AssemblyTrademark("")]
+[assembly: AssemblyCompany("NSDN")]
+[assembly: AssemblyProduct("NyaSync")]
+[assembly: AssemblyCopyright("Copyright © NSDN 2014 - 2020")]
+[assembly: AssemblyTrademark("NSDN")]
 [assembly: AssemblyCulture("")]
 
 // 将 ComVisible 设置为 false 会使此程序集中的类型

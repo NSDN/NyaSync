@@ -8,12 +8,12 @@ using System.Windows;
 // 控制。更改这些特性值可修改
 // 与程序集关联的信息。
 [assembly: AssemblyTitle("NyaSync")]
-[assembly: AssemblyDescription("")]
+[assembly: AssemblyDescription("NyaSync GUI")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("")]
+[assembly: AssemblyCompany("NSDN")]
 [assembly: AssemblyProduct("NyaSync")]
-[assembly: AssemblyCopyright("Copyright ©  2019")]
-[assembly: AssemblyTrademark("")]
+[assembly: AssemblyCopyright("Copyright © NSDN 2014 - 2020")]
+[assembly: AssemblyTrademark("NSDN")]
 [assembly: AssemblyCulture("")]
 
 // 将 ComVisible 设置为 false 会使此程序集中的类型

@@ -12,6 +12,13 @@
             <Rectangle Fill="#FF607D8B" Margin="0,0,0,0" RadiusX="32" RadiusY="32"/>
             <Label Content="NyaSync" Margin="0,0,0,0" VerticalContentAlignment="Center" HorizontalContentAlignment="Center" FontSize="72" Foreground="#FFEEEEEE" />
         </Grid>
-        <Button x:Name="BtnExit" Content="×" Margin="0,16,16,0" HorizontalAlignment="Right" Width="24" Height="24" VerticalAlignment="Top" Background="{x:Null}" Foreground="#FFE1E1E1" FontSize="16" VerticalContentAlignment="Center" Click="BtnExit_Click" BorderBrush="{x:Null}" FontWeight="Bold" />
+        <Button x:Name="BtnExit" Content="×" Margin="0,16,16,0" HorizontalAlignment="Right" Width="24" Height="24" VerticalAlignment="Top" Background="{x:Null}" Foreground="#FFE1E1E1" FontSize="16" VerticalContentAlignment="Center" Click="BtnExit_Click" BorderBrush="{x:Null}" FontWeight="Bold" HorizontalContentAlignment="Center" />
+        <ProgressBar x:Name="ProBar" Margin="16,0,128,28" Height="12" VerticalAlignment="Bottom"/>
+        <ProgressBar x:Name="ProBarSub" HorizontalAlignment="Right" Margin="0,0,16,28" Width="107" Height="12" VerticalAlignment="Bottom"/>
+        <TextBlock x:Name="InfoBox" Text="Hello Gensokyo!" Margin="16,0,16,16" Height="12" VerticalAlignment="Bottom" FontSize="9" ScrollViewer.VerticalScrollBarVisibility="Disabled" Foreground="White" >
+            <TextBlock.Effect>
+                <DropShadowEffect BlurRadius="1" ShadowDepth="1"/>
+            </TextBlock.Effect>
+        </TextBlock>
     </Grid>
 </Window>

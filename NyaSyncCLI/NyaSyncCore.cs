@@ -96,6 +96,36 @@ class NyaSyncCore
         }
     }
 
+    private static bool DownloadFile(string url, string target, int blockSizeKB)
+    {
+        try
+        {
+            HttpWebRequest request = WebRequest.Create(url) as HttpWebRequest;
+            Stream stream = request.GetResponse().GetResponseStream();
+            string dir = Path.GetDirectoryName(target);
+            if (!Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+            FileStream fs = new FileStream(target, FileMode.Create, FileAccess.Write);
+            byte[] bytes = new byte[1024 * blockSizeKB];
+            int readCount = 0;
+            while (true)
+            {
+                readCount = stream.Read(bytes, 0, bytes.Length);
+                if (readCount <= 0)
+                    break;
+                fs.Write(bytes, 0, readCount);
+                fs.Flush();
+            }
+            fs.Close();
+            stream.Close();
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+        return true;
+    }
+
     /// 服务端，扫描目录，获得文件路径+文件名和哈希的键值对。
     /// 文件变更后，扫描目录，原表所有哈希置-1，计算新的哈希和添加新的键值对。
     /// 哈希为-1代表文件删除
@@ -253,6 +283,101 @@ class NyaSyncCore
                     Console.Write("[WORK] syncing: " + i.Key);
                     int retry = retryCount;
                     while (!DownloadFile(url + i.Key, localPath))
+                    {
+                        retry -= 1;
+                        if (retry == 0)
+                        {
+                            Console.WriteLine(", failed");
+                            break;
+                        }
+                    }
+                    if (retry != 0)
+                        Console.WriteLine(", ok");
+                }
+            }
+
+            Console.WriteLine("[DONE] target at: " + target);
+            if (File.Exists(localIndex.Replace(BAK_EXT, "")))
+                File.Delete(localIndex.Replace(BAK_EXT, ""));
+            File.Move(localIndex, localIndex.Replace(BAK_EXT, ""));
+        }
+        else
+        {
+            Console.WriteLine("[DONE] no need to sync");
+        }
+    }
+
+    public static void DoClientStuff(string server, string target, string cache, int blockSizeKB, int retryCount = 3)
+    {
+        if (!Directory.Exists(cache))
+            Directory.CreateDirectory(cache);
+
+        if (!target.EndsWith("/") && !target.EndsWith("\\"))
+            target += "/";
+        if (!cache.EndsWith("/") && !cache.EndsWith("\\"))
+            cache += "/";
+
+        bool shouldSync = false;
+
+        string indexName = Path.GetFileName(server);
+        string url = server.Replace(indexName, ""); // already has slash
+
+        string localIndex = cache + indexName;
+        Console.WriteLine("[INFO] fetching index file...");
+        if (File.Exists(localIndex))
+        {
+            if (DownloadFile(server + MD5_EXT, localIndex + MD5_EXT, blockSizeKB))
+            {
+                string remoteMd5 = File.ReadAllText(localIndex + MD5_EXT);
+                string localMd5 = GetFileMD5(localIndex);
+                if (remoteMd5 != localMd5)
+                {
+                    localIndex += BAK_EXT;
+                    shouldSync = DownloadFile(server, localIndex, blockSizeKB);
+                }
+            }
+        }
+        else
+        {
+            localIndex += BAK_EXT;
+            shouldSync = DownloadFile(server, localIndex, blockSizeKB);
+        }
+
+        if (shouldSync)
+        {
+            Console.WriteLine("[INFO] reading index file...");
+            Dictionary<string, string> indexes = new Dictionary<string, string>(); // Dict<path, md5>
+            ReadIndexFile(localIndex, ref indexes);
+
+            foreach (var i in indexes)
+            {
+                string localPath = target + i.Key;
+
+                if (Directory.Exists(localPath) || i.Value == DIR_MD5)
+                {
+                    if (i.Value != DIR_MD5)
+                    {
+                        Console.WriteLine("[WORK] del dir: " + i.Key);
+                        Directory.Delete(localPath, true);
+                    }
+                    continue;
+                }
+
+                if (GetFileMD5(localPath) != i.Value)
+                {
+                    if (i.Value == NUL_MD5)
+                    {
+                        if (File.Exists(localPath))
+                        {
+                            Console.WriteLine("[WORK] del file: " + i.Key);
+                            File.Delete(localPath);
+                        }
+                        continue;
+                    }
+
+                    Console.Write("[WORK] syncing: " + i.Key);
+                    int retry = retryCount;
+                    while (!DownloadFile(url + i.Key, localPath, blockSizeKB))
                     {
                         retry -= 1;
                         if (retry == 0)
