@@ -17,6 +17,9 @@ namespace NyaSync
         private const string NUL_MD5 = "null";
         private const string DIR_MD5 = "dir";
 
+        private const int EXCEED_TIME = 500;
+        private const int PAR_COUNT = 8;
+
         private static string GetFileMD5(string file)
         {
             if (File.Exists(file))
@@ -57,8 +60,12 @@ namespace NyaSync
                 {
                     using (WebClient client = new WebClient())
                     {
+                        int progress = 0;
                         client.DownloadProgressChanged += new DownloadProgressChangedEventHandler((obj, e) => {
                             bar.Dispatcher.Invoke(new ThreadStart(() => bar.Value = e.ProgressPercentage));
+                            Monitor.Enter(_lock);
+                            progress = e.ProgressPercentage;
+                            Monitor.Exit(_lock);
                         });
                         string dir = Path.GetDirectoryName(target);
                         if (!Directory.Exists(dir))
@@ -71,9 +78,16 @@ namespace NyaSync
                             ok = true;
                             Monitor.Exit(_lock);
                         });
+                        int prevProgress = -1, counter = 0;
                         while (true)
                         {
                             Monitor.Enter(_lock);
+                            if (prevProgress == -1)
+                                prevProgress = progress;
+                            else if (prevProgress == progress)
+                                counter += 1;
+                            else
+                                counter = 0;
                             if (ok)
                             {
                                 Monitor.Exit(_lock);
@@ -81,6 +95,9 @@ namespace NyaSync
                             }
                             Monitor.Exit(_lock);
                             Thread.Sleep(1);
+
+                            if (counter > EXCEED_TIME)
+                                return false;
                         }
                     }
                 }
@@ -123,10 +140,12 @@ namespace NyaSync
 
         private static void Print(TextBlock text, String str)
         {
+            Monitor.Enter(_lock);
             text.Dispatcher.Invoke(new ThreadStart(() => text.Text = str));
+            Monitor.Exit(_lock);
         }
 
-        public static bool DoClientStuff(string server, string target, string cache, int blockSizeKB, ProgressBar bar, ProgressBar sub, TextBlock text, int retryCount = 3)
+        public static bool DoClientStuff(string server, string target, string cache, int blockSizeKB, ProgressBar bar, ProgressBar sub, TextBlock text, int retryCount = 3, bool useParDown = false)
         {
             bar.Dispatcher.Invoke(new ThreadStart(() => bar.Value = 0));
             sub.Dispatcher.Invoke(new ThreadStart(() => sub.Value = 0));
@@ -207,53 +226,159 @@ namespace NyaSync
                 }));
 
                 int workCount = 0;
-                foreach (var i in indexes)
-                {
-                    string localPath = target + i.Key;
 
-                    if (Directory.Exists(localPath) || i.Value == DIR_MD5)
+                if (useParDown)
+                {
+                    List<Stack<KeyValuePair<string, string>>> tasks = new List<Stack<KeyValuePair<string, string>>>();
+                    for (int i = 0; i < PAR_COUNT; i++)
+                        tasks.Add(new Stack<KeyValuePair<string, string>>());
+
+                    int ptr = 0;
+                    foreach (var i in indexes)
                     {
-                        if (i.Value != DIR_MD5)
-                        {
-                            Print(text, "[WORK] del dir: " + i.Key);
-                            Directory.Delete(localPath, true);
-                            bar.Dispatcher.Invoke(new ThreadStart(() => bar.Value += 1));
-                            workCount += 1;
-                        }
-                        continue;
+                        tasks[ptr].Push(i);
+                        ptr += 1;
+                        if (ptr >= PAR_COUNT)
+                            ptr = 0;
                     }
 
-                    if (GetFileMD5(localPath) != i.Value)
+                    int finishCount = 0;
+
+                    ParameterizedThreadStart func = (obj) =>
                     {
-                        if (i.Value == NUL_MD5)
+                        if (obj is Stack<KeyValuePair<string, string>> task)
                         {
-                            if (File.Exists(localPath))
+                            while (task.Count != 0)
                             {
-                                Print(text, "[WORK] del file: " + i.Key);
-                                File.Delete(localPath);
+                                var i = task.Pop();
+                                string localPath = target + i.Key;
+
+                                if (Directory.Exists(localPath) || i.Value == DIR_MD5)
+                                {
+                                    if (i.Value != DIR_MD5)
+                                    {
+                                        Print(text, "[WORK] del dir: " + i.Key);
+                                        Directory.Delete(localPath, true);
+                                        Monitor.Enter(_lock);
+                                        bar.Dispatcher.Invoke(new ThreadStart(() => bar.Value += 1));
+                                        workCount += 1;
+                                        Monitor.Exit(_lock);
+                                    }
+                                    continue;
+                                }
+
+                                if (GetFileMD5(localPath) != i.Value)
+                                {
+                                    if (i.Value == NUL_MD5)
+                                    {
+                                        if (File.Exists(localPath))
+                                        {
+                                            Print(text, "[WORK] del file: " + i.Key);
+                                            File.Delete(localPath);
+                                            Monitor.Enter(_lock);
+                                            bar.Dispatcher.Invoke(new ThreadStart(() => bar.Value += 1));
+                                            workCount += 1;
+                                            Monitor.Exit(_lock);
+                                        }
+                                        continue;
+                                    }
+
+                                    string str = "[WORK] syncing: " + i.Key;
+                                    Print(text, str);
+                                    int retry = retryCount;
+                                    while (!DownloadFile(url + i.Key, localPath, blockSizeKB, sub))
+                                    {
+                                        retry -= 1;
+                                        if (retry == 0)
+                                        {
+                                            Print(text, str + ", failed");
+                                            break;
+                                        }
+                                    }
+                                    if (retry != 0)
+                                    {
+                                        Print(text, str + ", ok");
+                                        Monitor.Enter(_lock);
+                                        bar.Dispatcher.Invoke(new ThreadStart(() => bar.Value += 1));
+                                        workCount += 1;
+                                        Monitor.Exit(_lock);
+                                    }
+                                }
+                            }
+                            Monitor.Enter(_lock);
+                            finishCount += 1;
+                            Monitor.Exit(_lock);
+                        }
+                    };
+
+                    Thread[] threads = new Thread[PAR_COUNT];
+                    for (int i = 0; i < PAR_COUNT; i++)
+                        threads[i] = new Thread(func);
+                    for (int i = 0; i < PAR_COUNT; i++)
+                        threads[i].Start(tasks[i]);
+
+                    while (true)
+                    {
+                        Monitor.Enter(_lock);
+                        if (finishCount == PAR_COUNT)
+                        {
+                            Monitor.Exit(_lock);
+                            break;
+                        }
+                        Monitor.Exit(_lock);
+                        Thread.Sleep(1);
+                    }
+                }
+                else
+                {
+                    foreach (var i in indexes)
+                    {
+                        string localPath = target + i.Key;
+
+                        if (Directory.Exists(localPath) || i.Value == DIR_MD5)
+                        {
+                            if (i.Value != DIR_MD5)
+                            {
+                                Print(text, "[WORK] del dir: " + i.Key);
+                                Directory.Delete(localPath, true);
                                 bar.Dispatcher.Invoke(new ThreadStart(() => bar.Value += 1));
                                 workCount += 1;
                             }
                             continue;
                         }
 
-                        string str = "[WORK] syncing: " + i.Key;
-                        Print(text, str);
-                        int retry = retryCount;
-                        while (!DownloadFile(url + i.Key, localPath, blockSizeKB, sub))
+                        if (GetFileMD5(localPath) != i.Value)
                         {
-                            retry -= 1;
-                            if (retry == 0)
+                            if (i.Value == NUL_MD5)
                             {
-                                Print(text, str + ", failed");
-                                break;
+                                if (File.Exists(localPath))
+                                {
+                                    Print(text, "[WORK] del file: " + i.Key);
+                                    File.Delete(localPath);
+                                    bar.Dispatcher.Invoke(new ThreadStart(() => bar.Value += 1));
+                                    workCount += 1;
+                                }
+                                continue;
                             }
-                        }
-                        if (retry != 0)
-                        {
-                            Print(text, str + ", ok");
-                            bar.Dispatcher.Invoke(new ThreadStart(() => bar.Value += 1));
-                            workCount += 1;
+
+                            string str = "[WORK] syncing: " + i.Key;
+                            Print(text, str);
+                            int retry = retryCount;
+                            while (!DownloadFile(url + i.Key, localPath, blockSizeKB, sub))
+                            {
+                                retry -= 1;
+                                if (retry == 0)
+                                {
+                                    Print(text, str + ", failed");
+                                    break;
+                                }
+                            }
+                            if (retry != 0)
+                            {
+                                Print(text, str + ", ok");
+                                bar.Dispatcher.Invoke(new ThreadStart(() => bar.Value += 1));
+                                workCount += 1;
+                            }
                         }
                     }
                 }
