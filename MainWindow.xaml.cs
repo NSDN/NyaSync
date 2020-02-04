@@ -120,8 +120,11 @@ namespace NyaSync
                      if (loader.After != "" && File.Exists(loader.After) && result)
                      {
                          Process.Start(loader.After);
-                         WindowState = WindowState.Minimized;
-                         Close();
+                         Dispatcher.Invoke(new ThreadStart(() =>
+                         {
+                             WindowState = WindowState.Minimized;
+                             Close();
+                         }));
                      }
                  }
              }), this, Timeout.Infinite, Timeout.Infinite);

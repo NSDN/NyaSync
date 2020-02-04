@@ -9,6 +9,67 @@ using System.Security.Cryptography;
 
 namespace NyaSync
 {
+    public class SafePool<T>
+    {
+        protected Stack<T> pool;
+        private readonly object _lock = new object();
+
+        public int Count
+        {
+            get
+            {
+                try
+                {
+                    Monitor.Enter(_lock);
+                    return pool.Count;
+                }
+                finally
+                {
+                    Monitor.Exit(_lock);
+                }
+            }
+        }
+
+        public SafePool()
+        {
+            pool = new Stack<T>();
+        }
+
+        public void Add(T task)
+        {
+            Monitor.Enter(_lock);
+            pool.Push(task);
+            Monitor.Exit(_lock);
+        }
+
+        public bool Has()
+        {
+            try
+            {
+                Monitor.Enter(_lock);
+                return pool.Count != 0;
+            }
+            finally
+            {
+                Monitor.Exit(_lock);
+            }
+        }
+
+        public T Pull()
+        {
+            try
+            {
+                Monitor.Enter(_lock);
+                if (pool.Count == 0) return default(T);
+                return pool.Pop();
+            }
+            finally
+            {
+                Monitor.Exit(_lock);
+            }
+        }
+    }
+
     class NyaSyncWPF
     {
         private const string BAK_EXT = ".bak";
@@ -87,7 +148,10 @@ namespace NyaSync
                             else if (prevProgress == progress)
                                 counter += 1;
                             else
+                            {
                                 counter = 0;
+                                prevProgress = progress;
+                            }
                             if (ok)
                             {
                                 Monitor.Exit(_lock);
@@ -229,36 +293,41 @@ namespace NyaSync
 
                 if (useParDown)
                 {
-                    List<Stack<KeyValuePair<string, string>>> tasks = new List<Stack<KeyValuePair<string, string>>>();
-                    for (int i = 0; i < PAR_COUNT; i++)
-                        tasks.Add(new Stack<KeyValuePair<string, string>>());
-
-                    int ptr = 0;
+                    SafePool<KeyValuePair<string, string>> safePool = new SafePool<KeyValuePair<string, string>>();
                     foreach (var i in indexes)
-                    {
-                        tasks[ptr].Push(i);
-                        ptr += 1;
-                        if (ptr >= PAR_COUNT)
-                            ptr = 0;
-                    }
+                        safePool.Add(i);
 
                     int finishCount = 0;
 
-                    ParameterizedThreadStart func = (obj) =>
+                    ThreadStart func = () =>
                     {
-                        if (obj is Stack<KeyValuePair<string, string>> task)
+                        while (safePool.Has())
                         {
-                            while (task.Count != 0)
-                            {
-                                var i = task.Pop();
-                                string localPath = target + i.Key;
+                            var i = safePool.Pull();
+                            string localPath = target + i.Key;
 
-                                if (Directory.Exists(localPath) || i.Value == DIR_MD5)
+                            if (Directory.Exists(localPath) || i.Value == DIR_MD5)
+                            {
+                                if (i.Value != DIR_MD5)
                                 {
-                                    if (i.Value != DIR_MD5)
+                                    Print(text, "[WORK] del dir: " + i.Key);
+                                    Directory.Delete(localPath, true);
+                                    Monitor.Enter(_lock);
+                                    bar.Dispatcher.Invoke(new ThreadStart(() => bar.Value += 1));
+                                    workCount += 1;
+                                    Monitor.Exit(_lock);
+                                }
+                                continue;
+                            }
+
+                            if (GetFileMD5(localPath) != i.Value)
+                            {
+                                if (i.Value == NUL_MD5)
+                                {
+                                    if (File.Exists(localPath))
                                     {
-                                        Print(text, "[WORK] del dir: " + i.Key);
-                                        Directory.Delete(localPath, true);
+                                        Print(text, "[WORK] del file: " + i.Key);
+                                        File.Delete(localPath);
                                         Monitor.Enter(_lock);
                                         bar.Dispatcher.Invoke(new ThreadStart(() => bar.Value += 1));
                                         workCount += 1;
@@ -267,55 +336,38 @@ namespace NyaSync
                                     continue;
                                 }
 
-                                if (GetFileMD5(localPath) != i.Value)
+                                string str = "[WORK] syncing: " + i.Key;
+                                Print(text, str);
+                                int retry = retryCount;
+                                while (!DownloadFile(url + i.Key, localPath, blockSizeKB, sub))
                                 {
-                                    if (i.Value == NUL_MD5)
+                                    retry -= 1;
+                                    if (retry == 0)
                                     {
-                                        if (File.Exists(localPath))
-                                        {
-                                            Print(text, "[WORK] del file: " + i.Key);
-                                            File.Delete(localPath);
-                                            Monitor.Enter(_lock);
-                                            bar.Dispatcher.Invoke(new ThreadStart(() => bar.Value += 1));
-                                            workCount += 1;
-                                            Monitor.Exit(_lock);
-                                        }
-                                        continue;
-                                    }
-
-                                    string str = "[WORK] syncing: " + i.Key;
-                                    Print(text, str);
-                                    int retry = retryCount;
-                                    while (!DownloadFile(url + i.Key, localPath, blockSizeKB, sub))
-                                    {
-                                        retry -= 1;
-                                        if (retry == 0)
-                                        {
-                                            Print(text, str + ", failed");
-                                            break;
-                                        }
-                                    }
-                                    if (retry != 0)
-                                    {
-                                        Print(text, str + ", ok");
-                                        Monitor.Enter(_lock);
-                                        bar.Dispatcher.Invoke(new ThreadStart(() => bar.Value += 1));
-                                        workCount += 1;
-                                        Monitor.Exit(_lock);
+                                        Print(text, str + ", failed");
+                                        break;
                                     }
                                 }
+                                if (retry != 0)
+                                {
+                                    Print(text, str + ", ok");
+                                    Monitor.Enter(_lock);
+                                    bar.Dispatcher.Invoke(new ThreadStart(() => bar.Value += 1));
+                                    workCount += 1;
+                                    Monitor.Exit(_lock);
+                                }
                             }
-                            Monitor.Enter(_lock);
-                            finishCount += 1;
-                            Monitor.Exit(_lock);
                         }
+                        Monitor.Enter(_lock);
+                        finishCount += 1;
+                        Monitor.Exit(_lock);
                     };
 
                     Thread[] threads = new Thread[PAR_COUNT];
                     for (int i = 0; i < PAR_COUNT; i++)
                         threads[i] = new Thread(func);
                     for (int i = 0; i < PAR_COUNT; i++)
-                        threads[i].Start(tasks[i]);
+                        threads[i].Start();
 
                     while (true)
                     {
