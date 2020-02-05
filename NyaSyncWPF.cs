@@ -161,7 +161,10 @@ namespace NyaSync
                             Thread.Sleep(1);
 
                             if (counter > EXCEED_TIME)
+                            {
+                                client.CancelAsync();
                                 return false;
+                            }
                         }
                     }
                 }
