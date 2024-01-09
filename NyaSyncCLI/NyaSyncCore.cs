@@ -152,7 +152,7 @@ class NyaSyncCore
         }
         Console.WriteLine("[INFO] loading config file...");
         string cfg = File.ReadAllText(config, Encoding.UTF8);
-        string[] includes = cfg.Replace("\n\r", "\n").Split('\n');
+        string[] includes = cfg.Replace("\r\n", "\n").Split('\n');
 
         Dictionary<string, string> indexes = new Dictionary<string, string>(); // Dict<path, md5>
         if (File.Exists(index))
@@ -194,7 +194,7 @@ class NyaSyncCore
         FileStream stream = File.Create(index);
         StreamWriter writer = new StreamWriter(stream);
         foreach (var i in indexes)
-            writer.Write(i.Key + "\t" + i.Value + "\n");
+            writer.Write(i.Key.Replace("\\", "/") + "\t" + i.Value + "\n");
         writer.Flush(); writer.Close();
         string indexMD5 = GetFileMD5(index);
         File.WriteAllText(index + MD5_EXT, indexMD5);

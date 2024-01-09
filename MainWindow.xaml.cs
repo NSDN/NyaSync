@@ -116,12 +116,15 @@ namespace NyaSync
                  {
                      bool result = false;
                      if (loader.Server != "" && loader.Cache != "" && loader.Target != "")
-                         result = NyaSyncWPF.DoClientStuff(loader.Server, loader.Target, loader.Cache, fileBlockSize, ProBar, ProBarSub, InfoBox);
+                         result = NyaSyncWPF.DoClientStuff(loader.Server, loader.Target, loader.Cache, fileBlockSize, ProBar, ProBarSub, InfoBox, 5, true);
                      if (loader.After != "" && File.Exists(loader.After) && result)
                      {
                          Process.Start(loader.After);
-                         Dispatcher.Invoke(new Action(() => WindowState = WindowState.Minimized));
-                         Close();
+                         Dispatcher.Invoke(new ThreadStart(() =>
+                         {
+                             WindowState = WindowState.Minimized;
+                             Close();
+                         }));
                      }
                  }
              }), this, Timeout.Infinite, Timeout.Infinite);
