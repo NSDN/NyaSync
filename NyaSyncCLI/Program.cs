@@ -11,8 +11,10 @@ namespace NyaSyncCLI
             if (args.Length != 3)
             {
                 Console.WriteLine("NyaSync CLI | usage:");
-                Console.WriteLine("use as server: " + Path.GetFileName(Environment.CommandLine) + " " + SERVER_ARG + " [config file] [index file]");
-                Console.WriteLine("use as client: " + Path.GetFileName(Environment.CommandLine) + " [server url] [target dir] [cache dir]");
+                string name = Environment.CommandLine;
+                name = Path.GetFileName(name.Substring(1, name.Length - 2));
+                Console.WriteLine("use as server: " + name + " " + SERVER_ARG + " [config file] [index file]");
+                Console.WriteLine("use as client: " + name + " [server url] [target dir] [cache dir]");
                 Console.WriteLine();
                 return;
             }
